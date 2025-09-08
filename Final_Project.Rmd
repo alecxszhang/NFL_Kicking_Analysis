@@ -1,0 +1,599 @@
+---
+title: "Final Project"
+output: html_document
+date: "2025-05-11"
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+library(tidyverse)
+library(caret)
+library(lmerTest)
+library(readxl)
+library(data.table)
+library(class) 
+nfl <- read_excel("Kicking_Data.xlsx", sheet = "NFL Data")
+college = read_excel("Kicking_Data.xlsx", sheet = "College Data")
+nfl_avg = read_excel("Kicking_Data.xlsx", sheet = "NFL Averages")
+
+
+```
+
+
+
+```{r}
+colnames(nfl) = c("Player", "Season", "Age", "Team", "Lg", "Pos", "G", "GS", "0-19_FGA", "0-19_FGM", "20-29_FGA", "20-29_FGM", "30-39_FGA", "30-39_FGM", "40-49_FGA", "40-49_FGM", "50+_FGA","50+_FGM", "ScoringFGA", "ScoringFGM", "ScoringLng", "ScoringFG%", "ScoringXPA", "ScoringXPM", "ScoringXP%", "KO", "KOyds", "TB", "TB%", "KOAvg", "AV", "FPTS/G", "FPTS", "Award" )
+
+nfl <- nfl[-1, ]
+
+colnames(nfl_avg) = c("Player", "G", "GS", "0-19_FGA", "0-19_FGM", "20-29_FGA", "20-29_FGM", "30-39_FGA", "30-39_FGM", "40-49_FGA", "40-49_FGM", "50+_FGA","50+_FGM", "ScoringFGA", "ScoringFGM", "ScoringLng", "ScoringFG%", "ScoringXPA", "ScoringXPM", "ScoringXP%", "KO", "KOyds", "TB", "TB%", "KOAvg", "AV","FPTS/G", "FPTS", "Award" )
+
+nfl_avg <- nfl_avg[-1, ]
+```
+
+
+
+```{r}
+drop_names <- c("Jake Bates", "Greg Zuerlein")
+nfl_avg <- nfl_avg[ ! nfl_avg$Player %in% drop_names, ]
+
+```
+
+
+```{r}
+
+cols <- c( "G", "GS", "0-19_FGA", "0-19_FGM", "20-29_FGA", "20-29_FGM", "30-39_FGA", "30-39_FGM", "40-49_FGA", "40-49_FGM", "50+_FGA","50+_FGM", "ScoringFGA", "ScoringFGM", "ScoringLng", "ScoringFG%", "ScoringXPA", "ScoringXPM", "ScoringXP%", "KO", "KOyds", "TB", "TB%", "KOAvg", "AV", "FPTS/G", "FPTS")
+nfl_avg[cols] <- lapply(nfl_avg[cols], function(x) {
+  if (is.factor(x)) x <- as.character(x)
+  as.numeric(x)
+})
+
+```
+
+
+```{r}
+
+cols <- c("G", "XPM", "XPA", "XP%", "FGM", "FGA", "FG%", "Pts")
+college[cols] <- lapply(college[cols], function(x) {
+  if (is.factor(x)) x <- as.character(x)
+  as.numeric(x)
+})
+
+
+```
+
+
+```{r}
+nfl_avg$ScoringFGA_per_game <- nfl_avg$ScoringFGA / nfl_avg$G
+nfl_avg$ScoringFGM_per_game <- nfl_avg$ScoringFGM / nfl_avg$G
+nfl_avg$ScoringXPA_per_game <- nfl_avg$ScoringXPA / nfl_avg$G
+nfl_avg$ScoringXPM_per_game <- nfl_avg$ScoringXPM / nfl_avg$G
+nfl_avg[["0-19_FGA_per_game"]] <- nfl_avg[["0-19_FGA"]] / nfl_avg$G
+nfl_avg[["0-19_FGM_per_game"]] <- nfl_avg[["0-19_FGM"]] / nfl_avg$G
+nfl_avg[["20-29_FGA_per_game"]] <- nfl_avg[["20-29_FGA"]] / nfl_avg$G
+nfl_avg[["20-29_FGM_per_game"]] <- nfl_avg[["20-29_FGM"]] / nfl_avg$G
+nfl_avg[["30-39_FGA_per_game"]] <- nfl_avg[["30-39_FGA"]] / nfl_avg$G
+nfl_avg[["30-39_FGM_per_game"]] <- nfl_avg[["30-39_FGM"]] / nfl_avg$G
+nfl_avg[["40-49_FGA_per_game"]] <- nfl_avg[["40-49_FGA"]] / nfl_avg$G
+nfl_avg[["40-49_FGM_per_game"]] <- nfl_avg[["40-49_FGM"]] / nfl_avg$G
+nfl_avg[["50+_FGA_per_game"]] <- nfl_avg[["50+_FGA"]] / nfl_avg$G
+nfl_avg[["50+_FGM_per_game"]] <- nfl_avg[["50+_FGM"]] / nfl_avg$G
+```
+
+
+```{r}
+college$FGA_per_game <- college$FGA / college$G
+college$FGM_per_game <- college$FGM / college$G
+college$Pts_per_game <- college$Pts / college$G
+
+```
+
+
+```{r}
+model1 <- lm(
+  nfl_avg[["ScoringFGM_per_game"]] ~
+    as.factor(college$P5) +
+    college[["FG%"]] +
+    college[["Pts_per_game"]] +
+    college[["XP%"]] +
+    college[["FGM_per_game"]] + 
+    college[["G"]]
+)
+
+summary(model1)
+```
+
+
+```{r}
+model2 <- lm(
+  nfl_avg[["FPTS/G"]] ~
+    as.factor(college$P5) +
+    college[["FG%"]] +
+    college[["Pts_per_game"]] +
+    college[["XP%"]] +
+    college[["FGM_per_game"]] + 
+    college[["G"]]
+)
+
+summary(model2)
+```
+
+```{r}
+model3 = glm(as.factor(nfl_avg[["Award"]])~
+    as.factor(college$P5) +
+    college[["FG%"]] +
+    college[["Pts_per_game"]] +
+    college[["XP%"]] +
+    college[["FGM_per_game"]] + 
+    college[["G"]], family = binomial
+)
+
+summary(model3)
+```
+
+
+```{r}
+model4 = lm(nfl_avg[["ScoringFG%"]]~
+    as.factor(college$P5) +
+    college[["FG%"]] +
+    college[["Pts_per_game"]] +
+    college[["XP%"]] +
+    college[["FGM_per_game"]] + 
+    college[["G"]]
+)
+
+summary(model4)
+```
+
+
+```{r}
+model5 = lm(nfl_avg[["FPTS"]]~
+    as.factor(college$P5) +
+    college[["FG%"]] +
+    college[["Pts_per_game"]] +
+    college[["XP%"]] +
+    college[["FGM_per_game"]] + 
+    college[["G"]]
+)
+
+summary(model5)
+```
+
+```{r}
+model6 = glm(nfl_avg[["ScoringXP%"]]~
+    as.factor(college$P5) +
+    college[["FG%"]] +
+    college[["Pts_per_game"]] +
+    college[["XP%"]] +
+    college[["FGM_per_game"]] + 
+    college[["G"]]
+)
+
+summary(model6)
+```
+
+
+
+```{r}
+df <- data.frame(
+  cFG_pct     = as.numeric(college[["FG%"]]),
+  ScoringFG_pct = as.numeric(nfl_avg[["ScoringFG%"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cFG_pct, 
+               y = ScoringFG_pct,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College Field Goal %",
+    y     = "NFL Scoring FG%",
+    title = "College FG% vs. NFL Scoring FG% by Power-5 Status",
+    color = "Power-5"            # label for the legend
+  ) +
+  theme_minimal()
+```
+
+
+
+```{r}
+trainX <- df[, c("cFG_pct", "ScoringFG_pct")]
+trainY <- df$P5
+k      <- 9
+
+# 2) Build a fine grid over the FG space
+x_seq <- seq(min(df$cFG_pct,        na.rm = TRUE),
+             max(df$cFG_pct,        na.rm = TRUE),
+             length = 200)
+y_seq <- seq(min(df$ScoringFG_pct,  na.rm = TRUE),
+             max(df$ScoringFG_pct,  na.rm = TRUE),
+             length = 200)
+
+# use a name that won’t mask a function
+grid_df <- expand.grid(
+  cFG_pct        = x_seq,
+  ScoringFG_pct  = y_seq
+)
+
+# 3) Run knn() on that grid with prob=TRUE
+knn_pred <- knn(
+  train = trainX,
+  test  = grid_df,
+  cl    = trainY,
+  k     = k,
+  prob  = TRUE
+)
+
+# 4) Turn the “winning‐class vote proportion” into a P(P5 = second level)
+grid_df$prob <- ifelse(
+  knn_pred == levels(trainY)[2],
+  attr(knn_pred, "prob"),
+  1 - attr(knn_pred, "prob")
+)
+
+# 5) Plot points + the 0.5‐contour decision boundary
+ggplot(df, aes(x = cFG_pct, y = ScoringFG_pct, color = P5)) +
+  geom_point() +
+  geom_contour(
+    data   = grid_df,
+    aes(z = prob, x = cFG_pct, y = ScoringFG_pct),
+    breaks = 0.5,
+    color  = "black",
+    size   = 0.7
+  ) +
+  labs(
+    x     = "College Field Goal %",
+    y     = "NFL Scoring FG%",
+    title = paste0("KNN (k=", k,") Decision Boundary")
+  ) +
+  theme_minimal()
+```
+
+
+
+```{r}
+df <- data.frame(
+  cXP_pct     = as.numeric(college[["XP%"]]),
+  ScoringXP_pct= as.numeric(nfl_avg[["ScoringXP%"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cXP_pct, 
+               y = ScoringXP_pct,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College XP %",
+    y     = "NFL XP%",
+    title = "College XP% vs. NFL Scoring XP% by Power-5 Status",
+    color = "Power-5"            # label for the legend
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+library(class)    # for knn()
+
+library(ggplot2)
+
+# 1) Fit KNN on your two predictors
+trainX <- df[, c("cXP_pct","ScoringXP_pct")]
+trainY <- df$P5
+k      <- 7
+
+# 2) Build a fine grid in that 2-D predictor space
+x_seq <- seq(min(df$cXP_pct, na.rm=TRUE),
+             max(df$cXP_pct, na.rm=TRUE),
+             length = 200)
+y_seq <- seq(min(df$ScoringXP_pct, na.rm=TRUE),
+             max(df$ScoringXP_pct, na.rm=TRUE),
+             length = 200)
+
+# NOTE: choose a name that doesn’t clash with base functions!
+grid_df <- expand.grid(
+  cXP_pct        = x_seq,
+  ScoringXP_pct  = y_seq
+)
+
+# 3) Run knn() with prob=TRUE on that grid
+knn_pred <- knn(
+  train = trainX,
+  test  = grid_df,
+  cl    = trainY,
+  k     = k,
+  prob  = TRUE
+)
+
+# 4) Extract the “probability” of each point being P5 == the 2nd level
+grid_df$prob <- ifelse(
+  knn_pred == levels(trainY)[2],
+  attr(knn_pred, "prob"),
+  1 - attr(knn_pred, "prob")
+)
+
+# 5) Plot your points + the KNN decision boundary at prob = 0.5
+ggplot(df, aes(x = cXP_pct, y = ScoringXP_pct, color = P5)) +
+  geom_point() +
+  geom_contour(
+    data   = grid_df,
+    aes(z = prob, x = cXP_pct, y = ScoringXP_pct),
+    breaks = 0.5,
+    color  = "black",
+    linewidth   = 0.7
+  ) +
+  labs(
+    x     = "College XP%",
+    y     = "NFL Scoring XP%",
+    title = paste0("KNN (k=", k,") Decision Boundary")
+  ) +
+  theme_minimal()
+
+```
+
+
+
+```{r}
+df <- data.frame(
+  cFGM_per_game     = as.numeric(college[["FGM_per_game"]]),
+  ScoringFGM_per_game = as.numeric(nfl_avg[["ScoringFGM_per_game"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cFGM_per_game, 
+               y = ScoringFGM_per_game,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College FGM/G",
+    y     = "NFL FGM/G",
+    title = "College FGM/G vs. NFL Scoring FGM/G by Power-5 Status",
+    color = "Power-5"            # label for the legend
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+trainX <- df[, c("cFGM_per_game", "ScoringFGM_per_game")]
+trainY <- df$P5
+k      <- 5
+
+# 2) Build a fine grid over the FGM space
+x_seq <- seq(min(df$cFGM_per_game,        na.rm = TRUE),
+             max(df$cFGM_per_game,        na.rm = TRUE),
+             length = 200)
+y_seq <- seq(min(df$ScoringFGM_per_game,  na.rm = TRUE),
+             max(df$ScoringFGM_per_game,  na.rm = TRUE),
+             length = 200)
+
+grid_df <- expand.grid(
+  cFGM_per_game        = x_seq,
+  ScoringFGM_per_game  = y_seq
+)
+
+# 3) Run knn() on that grid with prob=TRUE
+knn_pred <- knn(
+  train = trainX,
+  test  = grid_df,
+  cl    = trainY,
+  k     = k,
+  prob  = TRUE
+)
+
+# 4) Extract “winning‐class probability” for P5 == second factor level
+grid_df$prob <- ifelse(
+  knn_pred == levels(trainY)[2],
+  attr(knn_pred, "prob"),
+  1 - attr(knn_pred, "prob")
+)
+
+# 5) Plot: points + 0.5‐contour decision boundary
+ggplot(df, aes(x = cFGM_per_game, y = ScoringFGM_per_game, color = P5)) +
+  geom_point() +
+  geom_contour(
+    data   = grid_df,
+    aes(z = prob, x = cFGM_per_game, y = ScoringFGM_per_game),
+    breaks = 0.5,
+    color  = "black",
+    size   = 0.7
+  ) +
+  labs(
+    x     = "College FGM/G",
+    y     = "NFL FGM/G",
+    title = paste0("KNN (k=", k,") Decision Boundary: College vs NFL FGM"),
+    color = "Power-5"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+df <- data.frame(
+  cFGM_per_game     = as.numeric(college[["FGM_per_game"]]),
+  fifty_plus_made = as.numeric(nfl_avg[["50+_FGM"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cFGM_per_game, 
+               y = fifty_plus_made,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College FGM/G",
+    y     = "NFL 50+ makes",
+    title = "College FGM/G made vs. NFL Scoring 50+ made by Power-5 Status",
+    color = "Power-5"            # label for the legend
+  ) +
+  theme_minimal()
+```
+
+```{r}
+trainX <- df[, c("cFGM_per_game", "fifty_plus_made")]
+trainY <- df$P5
+k      <- 11
+
+# 2) Build a fine grid over that 2-D space
+x_seq <- seq(min(df$cFGM_per_game,           na.rm = TRUE),
+             max(df$cFGM_per_game,           na.rm = TRUE),
+             length = 200)
+y_seq <- seq(min(df$fifty_plus_made, na.rm = TRUE),
+             max(df$fifty_plus_made, na.rm = TRUE),
+             length = 200)
+
+grid_df <- expand.grid(
+  cFGM_per_game            = x_seq,
+  fifty_plus_made = y_seq
+)
+
+# 3) Run knn() on the grid with prob=TRUE
+knn_pred <- knn(
+  train = trainX,
+  test  = grid_df,
+  cl    = trainY,
+  k     = k,
+  prob  = TRUE
+)
+
+# 4) Extract the “winning‐class probability” for the 2nd level of P5
+grid_df$prob <- ifelse(
+  knn_pred == levels(trainY)[2],
+  attr(knn_pred, "prob"),
+  1 - attr(knn_pred, "prob")
+)
+
+# 5) Plot the points + the 0.5 decision boundary
+ggplot(df, aes(x = cFGM_per_game, y = fifty_plus_made, color = P5)) +
+  geom_point() +
+  geom_contour(
+    data   = grid_df,
+    aes(z = prob, x = cFGM_per_game, y = fifty_plus_made),
+    breaks = 0.5,
+    color  = "black",
+    size   = 0.7
+  ) +
+  labs(
+    x     = "College FGM/G",
+    y     = "NFL 50+ FGM",
+    title = paste0("KNN (k=", k,") Decision Boundary: College FGM vs NFL 50+ FGM"),
+    color = "Power-5"
+  ) +
+  theme_minimal()
+```
+
+
+
+```{r}
+df <- data.frame(
+  cFGM     = as.numeric(college[["FGM"]]),
+  fifty_plus_attempted = as.numeric(nfl_avg[["50+_FGA"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cFGM, 
+               y = fifty_plus_attempted,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College FGM",
+    y     = "NFL 50+ attempts",
+    title = "College FGM attempted vs. NFL Scoring 50+ Attempts by Power-5 Status",
+    color = "Power-5"            # label for the legend
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+df <- data.frame(
+  cFGM     = as.numeric(college[["FGM"]]),
+  forty_fourtynine = as.numeric(nfl_avg[["40-49_FGM"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cFGM, 
+               y = forty_fourtynine,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College FGM",
+    y     = "NFL 40-49 made",
+    title = "College FGM made vs. NFL Scoring 40-49 made by Power-5 Status",
+    color = "Power-5"            # label for the legend
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+df <- data.frame(
+  cpts_per_game     = as.numeric(college[["Pts_per_game"]]),
+  fpts_per_game = as.numeric(nfl_avg[["FPTS/G"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cpts_per_game, 
+               y = fpts_per_game,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College PTs/G",
+    y     = "NFL Fantasy Points/G",
+    title = "College PTs/G made vs. NFL Fantasy Points/G by Power-5 Status",
+    color = "Power-5"            # label for the legend
+  ) +
+  theme_minimal()
+```
+
+```{r}
+trainX <- df[, c("cpts_per_game", "fpts_per_game")]
+trainY <- df$P5
+k      <- 10
+
+# 2) Build a fine grid over that 2-D space
+x_seq <- seq(min(df$cpts_per_game,           na.rm = TRUE),
+             max(df$cpts_per_game,           na.rm = TRUE),
+             length = 200)
+y_seq <- seq(min(df$fpts_per_game, na.rm = TRUE),
+             max(df$fpts_per_game, na.rm = TRUE),
+             length = 200)
+
+grid_df <- expand.grid(
+  cpts_per_game            = x_seq,
+  fpts_per_game = y_seq
+)
+
+# 3) Run knn() on the grid with prob=TRUE
+knn_pred <- knn(
+  train = trainX,
+  test  = grid_df,
+  cl    = trainY,
+  k     = k,
+  prob  = TRUE
+)
+
+# 4) Extract the “winning‐class probability” for the 2nd level of P5
+grid_df$prob <- ifelse(
+  knn_pred == levels(trainY)[2],
+  attr(knn_pred, "prob"),
+  1 - attr(knn_pred, "prob")
+)
+
+# 5) Plot the points + the 0.5 decision boundary
+ggplot(df, aes(x = cpts_per_game, y = fpts_per_game, color = P5)) +
+  geom_point() +
+  geom_contour(
+    data   = grid_df,
+    aes(z = prob, x = cpts_per_game, y = fpts_per_game),
+    breaks = 0.5,
+    color  = "black",
+    size   = 0.7
+  ) +
+   labs(
+    x     = "College PTs/G",
+    y     = "NFL Fantasy Points/G",
+    title = "College PTs/G made vs. NFL Fantasy Points/G by Power-5 Status",
+    color = "Power-5"            # label for the legend
+  ) +
+  theme_minimal()
+```

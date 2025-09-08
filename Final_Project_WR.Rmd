@@ -1,0 +1,849 @@
+---
+title: "Final_Project_WR"
+output: html_document
+date: "2025-05-19"
+editor_options: 
+  chunk_output_type: console
+---
+
+## Libraries
+
+```{r}
+library(tidyverse)
+library(caret)
+library(lmerTest)
+library(readxl)
+library(data.table)
+library(class) 
+college <- read_excel("College_WR_Data.xlsx", sheet = "Sheet1")
+nfl= read_excel("NFL_WR_Data.xlsx", sheet = "NFL Data")
+nfl_avg = read_excel("NFL_WR_Data.xlsx", sheet = "NFL Averages")
+
+```
+
+## Naming
+
+```{r}
+colnames(nfl) = c("Player", "Season", "Age", "Team", "Lg", "Pos", "G", "GS", "Tgt", "Rec", "Yds", "Y/R", "TD", "1D", "Succ%", "Lng", "R/G","Y/G", "Ctch%", "Y/Tgt", "Rushing Att", "Rushing Yds", "Rushing TD","Rushing 1D", "Rushing Succ%", "Rushing Lng", "Rushing Y/A", "Rushing Y/G", "Rushing A/G", "Touch", "Y/Tch", "YScm", "RRTD", "FMB", "AV",  "Awards" )
+
+colnames(nfl_avg) = c("Player", "G", "GS", "Tgt", "Rec", "Yds", "Y/R", "TD", "1D", "Succ%", "Lng", "R/G","Y/G", "Ctch%", "Y/Tgt", "Rushing Att", "Rushing Yds", "Rushing TD","Rushing 1D", "Rushing Succ%", "Rushing Lng", "Rushing Y/A", "Rushing Y/G", "Rushing A/G", "Touch", "Y/Tch", "YScm", "RRTD", "FMB", "AV", "Awards" )
+
+colnames(college) = c("Player", "Season", "Team", "Conf", "Class", "Pos", "G", "Rec", "Yds", "Y/R", "TD", "Y/G", "Rushing Att", "Rushing Yds", "Rushing Y/A", "Rushing TD", "Rushing Y/G", "Plays", "Scrimmage Yds", "Scrimmage Avg", "Scrimmage TD", "Awards", "P5")
+```
+
+```{r}
+nfl_avg[["Rec/G"]] <- nfl_avg[["Rec"]] / nfl_avg$G
+nfl_avg[["TD/G"]] <- nfl_avg[["TD"]] / nfl_avg$G
+nfl_avg[["YScm/G"]] <- nfl_avg[["YScm"]] / nfl_avg$G
+```
+
+```{r}
+college[["Rec/G"]] <- college[["Rec"]] / college$G
+college[["TD/G"]] <- college[["TD"]] / college$G
+college[["Scrimmage Yds/G"]] <- college[["Scrimmage Yds"]] / college$G
+```
+
+
+## Yards
+
+
+```{r}
+df <- data.frame(
+  cYds     = as.numeric(college[["Yds"]]),
+  nflYds = as.numeric(nfl_avg[["Yds"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cYds, 
+               y = nflYds,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College Receiving Yards",
+    y     = "NFL Receiving Yards",
+    title = "College Receiving Yards vs. NFL Receiving Yards by Power-5 Status"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+model1 <- lm(
+  nfl_avg[["Yds"]] ~
+    as.factor(college$P5) +
+    college[["Y/G"]] +
+    college[["Rec/G"]] +
+    college[["TD/G"]] +
+    college[["G"]]
+)
+
+summary(model1)
+```
+
+```{r}
+model1_v2 <- lm(
+  nfl_avg[["Yds"]] ~
+    college[["Y/G"]] +
+    college[["Rec/G"]] +
+    college[["TD/G"]] +
+    college[["G"]]
+)
+
+summary(model1_v2)
+```
+
+```{r}
+anova(model1, model1_v2, test = "Chisq")
+```
+
+```{r}
+
+df <- data.frame(
+  cYds     = as.numeric(college[["Y/G"]]),
+  nflYds = as.numeric(nfl_avg[["Yds"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+trainX <- df[, c("cYds", "nflYds")]
+trainY <- df$P5
+k      <- 4
+
+# 2) Create a fine 2D grid
+x_seq <- seq(min(df$cYds, na.rm = TRUE), max(df$cYds, na.rm = TRUE), length = 200)
+y_seq <- seq(min(df$nflYds, na.rm = TRUE), max(df$nflYds, na.rm = TRUE), length = 200)
+
+grid_df <- expand.grid(
+  cYds   = x_seq,
+  nflYds = y_seq
+)
+
+# 3) Run KNN with prob=TRUE on the grid
+knn_pred <- knn(
+  train = trainX,
+  test  = grid_df,
+  cl    = trainY,
+  k     = k,
+  prob  = TRUE
+)
+
+# 4) Extract probabilities for the 2nd level of factor (usually P5 == 1)
+grid_df$prob <- ifelse(
+  knn_pred == levels(trainY)[2],
+  attr(knn_pred, "prob"),
+  1 - attr(knn_pred, "prob")
+)
+
+# 5) Plot points and decision boundary
+ggplot(df, aes(x = cYds, y = nflYds, color = P5)) +
+  geom_point() +
+  geom_contour(
+    data = grid_df,
+    aes(x = cYds, y = nflYds, z = prob),
+    breaks = 0.5,
+    color = "black",
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "College Receiving Yards",
+    y = "NFL Receiving Yards",
+    title = paste0("KNN (k=", k, ") Decision Boundary")
+  ) +
+  theme_minimal()
+```
+
+
+## TDs
+
+```{r}
+df <- data.frame(
+  cTD_per_game     = as.numeric(college[["TD/G"]]),
+  nflTD_per_game = as.numeric(nfl_avg[["TD/G"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cTD_per_game, 
+               y = nflTD_per_game,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College Receiving TDs/G",
+    y     = "NFL Receiving TDs/G",
+    title = "College Receiving TDs/G vs. NFL Receiving TDs/G by Power-5 Status"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+model2 <- lm(
+  nfl_avg[["TD/G"]] ~
+    as.factor(college$P5) +
+    college[["Y/G"]] +
+    college[["Rec/G"]] +
+    college[["TD/G"]] +
+    college[["G"]]
+)
+
+summary(model2)
+```
+
+```{r}
+model2_v2 <- lm(
+  nfl_avg[["TD/G"]] ~
+    college[["Y/G"]] +
+    college[["Rec/G"]] +
+    college[["TD/G"]] +
+    college[["G"]]
+)
+
+summary(model2_v2)
+```
+
+```{r}
+anova(model2, model2_v2, test = "Chisq")
+```
+
+```{r}
+df <- data.frame(
+  cTD    = as.numeric(college[["TD/G"]]),
+  nflTD  = as.numeric(nfl_avg[["TD/G"]]),
+  P5     = as.factor(college[["P5"]])
+)
+
+# 2) Clean training data
+trainX <- df[, c("cTD", "nflTD")]
+trainY <- df$P5
+k      <- 4
+
+# 3) Create a fine 2D grid
+x_seq <- seq(min(df$cTD, na.rm = TRUE), max(df$cTD, na.rm = TRUE), length = 200)
+y_seq <- seq(min(df$nflTD, na.rm = TRUE), max(df$nflTD, na.rm = TRUE), length = 200)
+
+grid_df <- expand.grid(
+  cTD   = x_seq,
+  nflTD = y_seq
+)
+
+# 4) Run KNN on the grid
+knn_pred <- knn(
+  train = trainX,
+  test  = grid_df,
+  cl    = trainY,
+  k     = k,
+  prob  = TRUE
+)
+
+# 5) Extract class probabilities for P5 == 1 (or second level of the factor)
+grid_df$prob <- ifelse(
+  knn_pred == levels(trainY)[2],
+  attr(knn_pred, "prob"),
+  1 - attr(knn_pred, "prob")
+)
+
+# 6) Plot the data with the decision boundary
+ggplot(df, aes(x = cTD, y = nflTD, color = P5)) +
+  geom_point() +
+  geom_contour(
+    data = grid_df,
+    aes(x = cTD, y = nflTD, z = prob),
+    breaks = 0.5,
+    color = "black",
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "College Receiving TDs",
+    y = "NFL Receiving TDs",
+    title = paste0("KNN (k=", k, ") Decision Boundary for Touchdowns")
+  ) +
+  theme_minimal()
+```
+
+
+## TDs/G
+
+```{r}
+df <- data.frame(
+  cTD_G     = as.numeric(college[["TD/G"]]),
+  nflTD_G = as.numeric(nfl_avg[["TD/G"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cTD_G, 
+               y = nflTD_G,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College Receiving TD/G",
+    y     = "NFL Receiving TD/G",
+    title = "College Receiving TD/G vs. NFL Receiving TD/G by Power-5 Status"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+model3 <- glm(
+  (nfl_avg[["TD/G"]]) ~
+     as.factor(college$P5) +
+    college[["Y/G"]] +
+    college[["Rec/G"]] +
+    college[["TD/G"]] +
+    college[["G"]]
+)
+
+summary(model3)
+```
+
+```{r}
+model3_v2 <- glm(
+  (nfl_avg[["TD/G"]]) ~
+    college[["Y/G"]] +
+    college[["Rec/G"]] +
+    college[["TD/G"]] +
+    college[["G"]]
+)
+
+summary(model3_v2)
+```
+
+```{r}
+anova(model3, model3_v2, test = "Chisq")
+```
+
+```{r}
+df <- data.frame(
+  cTD_G   = with(college, ifelse(G > 0, TD / G, NA)),
+  nflTD_G = with(nfl_avg, ifelse(G > 0, TD / G, NA)),
+  P5      = as.factor(college[["P5"]])
+)
+
+# Remove rows with missing values
+df <- na.omit(df)
+
+# 2) Training data
+trainX <- df[, c("cTD_G", "nflTD_G")]
+trainY <- df$P5
+k      <- 3
+
+# 3) Create grid
+x_seq <- seq(min(df$cTD_G), max(df$cTD_G), length.out = 200)
+y_seq <- seq(min(df$nflTD_G), max(df$nflTD_G), length.out = 200)
+
+grid_df <- expand.grid(
+  cTD_G   = x_seq,
+  nflTD_G = y_seq
+)
+
+# 4) Run KNN
+knn_pred <- knn(
+  train = trainX,
+  test  = grid_df,
+  cl    = trainY,
+  k     = k,
+  prob  = TRUE
+)
+
+# 5) Extract probability of being P5 == levels(trainY)[2]
+grid_df$prob <- ifelse(
+  knn_pred == levels(trainY)[2],
+  attr(knn_pred, "prob"),
+  1 - attr(knn_pred, "prob")
+)
+
+# 6) Plot with decision boundary
+ggplot(df, aes(x = cTD_G, y = nflTD_G, color = P5)) +
+  geom_point() +
+  geom_contour(
+    data = grid_df,
+    aes(x = cTD_G, y = nflTD_G, z = prob),
+    breaks = 0.5,
+    color = "black",
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "College Receiving TD/G",
+    y = "NFL Receiving TD/G",
+    title = paste0("KNN (k=", k, ") Decision Boundary for TD/G")
+  ) +
+  theme_minimal()
+```
+
+
+
+
+## Yds/G
+
+```{r}
+df <- data.frame(
+  cRec     = as.numeric(college[["Y/G"]]),
+  nflRec = as.numeric(nfl_avg[["Y/G"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cRec, 
+               y = nflRec,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College Receiving Yards/G",
+    y     = "NFL Receiving Yards/G",
+    title = "College Receiving Yard/G vs. NFL Receiving Yards/G by Power-5 Status"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+model4 <- glm(
+  nfl_avg[["Y/G"]] ~
+    as.factor(college$P5) +
+    college[["Y/G"]] +
+    college[["Rec/G"]] +
+    college[["TD/G"]] +
+    college[["G"]]
+)
+
+summary(model4)
+```
+
+```{r}
+model4_v2 <- glm(
+  nfl_avg[["Y/G"]] ~
+    college[["Y/G"]] +
+    college[["Rec/G"]] +
+    college[["TD/G"]] +
+    college[["G"]]
+)
+
+summary(model4_v2)
+```
+
+```{r}
+anova(model4, model4_v2, test = "Chisq")
+```
+
+
+```{r}
+df <- data.frame(
+  cRec   = as.numeric(college[["Y/G"]]),
+  nflRec = as.numeric(nfl_avg[["Y/G"]]),
+  P5     = as.factor(college[["P5"]])
+)
+
+# 2) Remove rows with NA values (important for KNN)
+df <- na.omit(df)
+
+# 3) Prepare training data
+trainX <- df[, c("cRec", "nflRec")]
+trainY <- df$P5
+k <- 3  # You can adjust this to test different neighborhood sizes
+
+# 4) Create a grid over the predictor space
+x_seq <- seq(min(df$cRec), max(df$cRec), length.out = 200)
+y_seq <- seq(min(df$nflRec), max(df$nflRec), length.out = 200)
+
+grid_df <- expand.grid(
+  cRec   = x_seq,
+  nflRec = y_seq
+)
+
+# 5) Run KNN
+knn_pred <- knn(
+  train = trainX,
+  test  = grid_df,
+  cl    = trainY,
+  k     = k,
+  prob  = TRUE
+)
+
+# 6) Extract probability of being P5 == levels(trainY)[2]
+grid_df$prob <- ifelse(
+  knn_pred == levels(trainY)[2],
+  attr(knn_pred, "prob"),
+  1 - attr(knn_pred, "prob")
+)
+
+# 7) Plot the original data + KNN decision boundary
+ggplot(df, aes(x = cRec, y = nflRec, color = P5)) +
+  geom_point() +
+  geom_contour(
+    data = grid_df,
+    aes(x = cRec, y = nflRec, z = prob),
+    breaks = 0.5,
+    color = "black",
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "College Receiving Yards/G",
+    y = "NFL Receiving Yards/G",
+    title = paste0("KNN (k=", k, ") Decision Boundary for Yards/G")
+  ) +
+  theme_minimal()
+```
+
+
+
+## Recs
+
+
+```{r}
+df <- data.frame(
+  cRec     = as.numeric(college[["Rec/G"]]),
+  nflRec = as.numeric(nfl_avg[["Rec/G"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cRec, 
+               y = nflRec,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College Receiving Receptions",
+    y     = "NFL Receiving Receptions",
+    title = "College Receiving Receptions vs. NFL Receiving Receptions by Power-5 Status"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+model5 <- lm(
+  nfl_avg[["Rec/G"]] ~
+    as.factor(college$P5) +
+    college[["Y/G"]] +
+    college[["Rec/G"]] +
+    college[["TD/G"]] +
+    college[["G"]]
+)
+
+summary(model5)
+```
+
+```{r}
+model5_v2 <- lm(
+  nfl_avg[["Rec/G"]] ~
+    college[["Y/G"]] +
+    college[["Rec/G"]] +
+    college[["TD/G"]] +
+    college[["G"]]
+)
+
+summary(model5_v2)
+```
+
+```{r}
+anova(model5, model5_v2, test = "Chisq")
+```
+
+
+```{r}
+df <- data.frame(
+  cRec   = as.numeric(college[["Rec"]]),
+  nflRec = as.numeric(nfl_avg[["Rec"]]),
+  P5     = as.factor(college[["P5"]])
+)
+
+# 2) Remove missing data
+df <- na.omit(df)
+
+# 3) Set up training data
+trainX <- df[, c("cRec", "nflRec")]
+trainY <- df$P5
+k <- 3  # You can experiment with other values
+
+# 4) Create a fine grid for the predictor space
+x_seq <- seq(min(df$cRec), max(df$cRec), length.out = 200)
+y_seq <- seq(min(df$nflRec), max(df$nflRec), length.out = 200)
+
+grid_df <- expand.grid(
+  cRec   = x_seq,
+  nflRec = y_seq
+)
+
+# 5) Run KNN
+knn_pred <- knn(
+  train = trainX,
+  test  = grid_df,
+  cl    = trainY,
+  k     = k,
+  prob  = TRUE
+)
+
+# 6) Extract probability for class P5 == levels(trainY)[2]
+grid_df$prob <- ifelse(
+  knn_pred == levels(trainY)[2],
+  attr(knn_pred, "prob"),
+  1 - attr(knn_pred, "prob")
+)
+
+# 7) Plot with KNN decision boundary
+ggplot(df, aes(x = cRec, y = nflRec, color = P5)) +
+  geom_point() +
+  geom_contour(
+    data = grid_df,
+    aes(x = cRec, y = nflRec, z = prob),
+    breaks = 0.5,
+    color = "black",
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "College Receiving Receptions",
+    y = "NFL Receiving Receptions",
+    title = paste0("KNN (k=", k, ") Decision Boundary for Receptions")
+  ) +
+  theme_minimal()
+```
+
+
+## Recs / G
+
+```{r}
+df <- data.frame(
+  cRec_G     = as.numeric(college[["Rec"]]/college[["G"]]),
+  nflRec_G = as.numeric(nfl_avg[["Rec"]]/nfl_avg[["GS"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cRec_G, 
+               y = nflRec_G,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College Receiving Receptions",
+    y     = "NFL Receiving Receptions",
+    title = "College Receiving Receptions/G vs. NFL Receiving Receptions/G by Power-5 Status"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+model6 <- lm(
+  (nfl_avg[["Rec"]]/nfl_avg[["GS"]]) ~
+    as.factor(college$P5) +
+    college[["Yds"]] +
+    college[["Rec"]] +
+    college[["TD"]] +
+    college[["G"]]
+)
+
+summary(model6)
+```
+
+```{r}
+model6_v2 <- lm(
+  (nfl_avg[["Rec"]]/nfl_avg[["GS"]]) ~
+    college[["Yds"]] +
+    college[["Rec"]] +
+    college[["TD"]] +
+    college[["G"]]
+)
+
+summary(model6_v2)
+```
+
+```{r}
+anova(model6, model6_v2, test = "Chisq")
+```
+
+
+```{r}
+df <- data.frame(
+  cRec_G   = with(college, ifelse(G > 0, Rec / G, NA)),
+  nflRec_G = with(nfl_avg, ifelse(GS > 0, Rec / GS, NA)),
+  P5       = as.factor(college[["P5"]])
+)
+
+# 2) Remove rows with NA (due to 0 games or missing data)
+df <- na.omit(df)
+
+# 3) Set up training data
+trainX <- df[, c("cRec_G", "nflRec_G")]
+trainY <- df$P5
+k <- 3  # try 1–5 depending on dataset
+
+# 4) Create fine grid
+x_seq <- seq(min(df$cRec_G), max(df$cRec_G), length.out = 200)
+y_seq <- seq(min(df$nflRec_G), max(df$nflRec_G), length.out = 200)
+
+grid_df <- expand.grid(
+  cRec_G   = x_seq,
+  nflRec_G = y_seq
+)
+
+# 5) Run KNN on grid
+knn_pred <- knn(
+  train = trainX,
+  test  = grid_df,
+  cl    = trainY,
+  k     = k,
+  prob  = TRUE
+)
+
+# 6) Add predicted probabilities
+grid_df$prob <- ifelse(
+  knn_pred == levels(trainY)[2],
+  attr(knn_pred, "prob"),
+  1 - attr(knn_pred, "prob")
+)
+
+# 7) Plot data + decision boundary
+ggplot(df, aes(x = cRec_G, y = nflRec_G, color = P5)) +
+  geom_point() +
+  geom_contour(
+    data = grid_df,
+    aes(x = cRec_G, y = nflRec_G, z = prob),
+    breaks = 0.5,
+    color = "black",
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "College Receiving Receptions/Game",
+    y = "NFL Receiving Receptions/Game",
+    title = paste0("KNN (k=", k, ") Decision Boundary for Receptions/Game")
+  ) +
+  theme_minimal()
+```
+
+
+## Awards
+
+```{r}
+model7 = glm(as.factor(nfl_avg[["Awards"]])~
+    as.factor(college$P5) +
+    college[["Yds"]] +
+    college[["Rec"]] +
+    college[["TD"]] +
+    college[["G"]], family = binomial
+)
+
+summary(model7)
+```
+
+```{r}
+model7_v2 <- lm(
+  (nfl_avg[["Awards"]]) ~
+    college[["Yds"]] +
+    college[["Rec"]] +
+    college[["TD"]] +
+    college[["G"]]
+)
+
+summary(model7_v2)
+```
+
+```{r}
+anova(model7, model7_v2, test = "Chisq")
+```
+
+## Scrimmage Yards
+
+```{r}
+df <- data.frame(
+  cSyds     = as.numeric(college[["Scrimmage Yds/G"]]),
+  nflSyds = as.numeric(nfl_avg[["YScm/G"]]),
+  P5          = as.factor(college[["P5"]])
+)
+
+ggplot(df, aes(x = cSyds, 
+               y = nflSyds,
+               color = P5)) +           # move color = P5 inside aes()
+  geom_point() +
+  labs(
+    x     = "College Scrimmage Yards",
+    y     = "NFL Scrimmage Yards",
+    title = "College Scrimmage Yards vs. NFL Scrimmage Yards by Power-5 Status"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+model8 <- lm(
+  (nfl_avg[["YScm/G"]]) ~
+     as.factor(college$P5) +
+    college[["Y/G"]] +
+    college[["Rec/G"]] +
+    college[["TD/G"]] +
+    college[["G"]]
+)
+
+summary(model8)
+```
+
+```{r}
+model8_v2 <- lm(
+  (nfl_avg[["YScm"]]) ~
+    college[["Y/G"]] +
+    college[["Rec/G"]] +
+    college[["TD/G"]] +
+    college[["G"]]
+)
+
+summary(model8_v2)
+```
+
+```{r}
+anova(model8, model8_v2, test = "Chisq")
+```
+
+```{r}
+df <- data.frame(
+  cSyds   = as.numeric(college[["Scrimmage Yds"]]),
+  nflSyds = as.numeric(nfl_avg[["YScm"]]),
+  P5      = as.factor(college[["P5"]])
+)
+
+# 2) Clean data
+df <- na.omit(df)
+
+# 3) Set training data
+trainX <- df[, c("cSyds", "nflSyds")]
+trainY <- df$P5
+k <- 5  # Adjust as needed
+
+# 4) Create grid for prediction
+x_seq <- seq(min(df$cSyds), max(df$cSyds), length.out = 200)
+y_seq <- seq(min(df$nflSyds), max(df$nflSyds), length.out = 200)
+
+grid_df <- expand.grid(
+  cSyds   = x_seq,
+  nflSyds = y_seq
+)
+
+# 5) Run KNN
+knn_pred <- knn(
+  train = trainX,
+  test  = grid_df,
+  cl    = trainY,
+  k     = k,
+  prob  = TRUE
+)
+
+# 6) Get probability for P5 == levels(trainY)[2]
+grid_df$prob <- ifelse(
+  knn_pred == levels(trainY)[2],
+  attr(knn_pred, "prob"),
+  1 - attr(knn_pred, "prob")
+)
+
+# 7) Plot with decision boundary
+ggplot(df, aes(x = cSyds, y = nflSyds, color = P5)) +
+  geom_point() +
+  geom_contour(
+    data = grid_df,
+    aes(x = cSyds, y = nflSyds, z = prob),
+    breaks = 0.5,
+    color = "black",
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "College Scrimmage Yards",
+    y = "NFL Scrimmage Yards",
+    title = paste0("KNN (k=", k, ") Decision Boundary for Scrimmage Yards")
+  ) +
+  theme_minimal()
+```
+
+
+
+
+
